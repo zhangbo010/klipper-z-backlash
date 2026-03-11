@@ -5,13 +5,13 @@
 在 Klipper 主机（如树莓派）的终端中执行：
 
 ```bash
-cd ~/klipper/klippy/extras && wget -O z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/master/klippy/extras/z_backlash.py
+cd ~/klipper/klippy/extras && wget -O z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
 ```
 
 或使用 curl：
 
 ```bash
-cd ~/klipper/klippy/extras && curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/master/klippy/extras/z_backlash.py
+cd ~/klipper/klippy/extras && curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
 ```
 
 > 将 `zhangbo010` 替换为实际的 GitHub 用户名；若仓库已推送到 GitHub，可从仓库页面获取 raw 链接。
@@ -51,10 +51,10 @@ cd ~/klipper/klippy/extras
 
 # 下载 z_backlash.py（任选一种方式）
 # 方式 A：wget
-wget https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/master/klippy/extras/z_backlash.py
+wget https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
 
 # 方式 B：curl
-curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/master/klippy/extras/z_backlash.py
+curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
 ```
 
 ### 2. 添加配置

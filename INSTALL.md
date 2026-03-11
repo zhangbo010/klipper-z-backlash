@@ -5,6 +5,25 @@
 在 Klipper 主机（如树莓派）的终端中执行：
 
 ```bash
+bash <(curl -sSL https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh)
+```
+
+或先下载脚本再执行：
+
+```bash
+wget -q -O install.sh https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh
+bash install.sh
+```
+
+脚本会自动：检测 Klipper 路径 → 下载模块 → 下载配置示例 → 重启 Klipper
+
+---
+
+## 手动安装
+
+若需手动安装，执行：
+
+```bash
 cd ~/klipper/klippy/extras && wget -O z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
 ```
 
@@ -13,8 +32,6 @@ cd ~/klipper/klippy/extras && wget -O z_backlash.py https://raw.githubuserconten
 ```bash
 cd ~/klipper/klippy/extras && curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
 ```
-
-> 将 `zhangbo010` 替换为实际的 GitHub 用户名；若仓库已推送到 GitHub，可从仓库页面获取 raw 链接。
 
 ---
 

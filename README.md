@@ -8,13 +8,18 @@
 
 ## 安装方法
 
-1. 将 `klippy/extras/z_backlash.py` 复制到你的 Klipper 安装目录下的 `klippy/extras/` 文件夹中：
-   ```bash
-   cp klippy/extras/z_backlash.py ~/klipper/klippy/extras/
-   ```
+### 一键安装（推荐）
 
+在 Klipper 主机终端执行：
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh)
+```
+
+### 手动安装
+
+1. 将 `klippy/extras/z_backlash.py` 复制到 Klipper 的 `klippy/extras/` 目录
 2. 在 `printer.cfg` 中添加配置段（见下方配置说明）
-
 3. 重启 Klipper 服务
 
 ## 配置说明

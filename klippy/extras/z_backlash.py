@@ -13,6 +13,8 @@ class ZBacklashCompensation:
         self.printer = config.get_printer()
         self.backlash = config.getfloat('backlash', 0.1, minval=0.)
         self.last_z_direction = None  # 1=up, -1=down
+        self.last_logical_z = None    # 逻辑 Z 位置，用于方向判断
+        self.last_compensation = 0.    # 上次补偿量：+backlash 向上补偿，-backlash 向下补偿；get_position 需减去此项以保持逻辑位置不变
         self.next_transform = None
         self.printer.register_event_handler("klippy:connect",
                                             self._handle_connect)
@@ -29,14 +31,21 @@ class ZBacklashCompensation:
 
     def _handle_home_rails_end(self, homing_state, rails):
         self.last_z_direction = None
+        self.last_logical_z = None
+        self.last_compensation = 0.
 
     def get_position(self):
-        return self.next_transform.get_position()
+        pos = list(self.next_transform.get_position())
+        # 实际位置数据不做调整：返回逻辑位置（物理位置 - 已补偿量）
+        pos[2] = pos[2] - self.last_compensation
+        return pos
 
     def move(self, newpos, speed):
-        current_pos = self.next_transform.get_position()
-        z_current = current_pos[2]
         z_target = newpos[2]
+        # 使用逻辑位置判断方向，避免分段移动时 get_position() 返回补偿后的物理位置导致错误触发补偿
+        z_current = self.last_logical_z
+        if z_current is None:
+            z_current = self.next_transform.get_position()[2]
         z_delta = z_target - z_current
 
         if abs(z_delta) > 1e-9:
@@ -46,18 +55,20 @@ class ZBacklashCompensation:
                 new_direction = -1  # moving down
 
             if self.last_z_direction is not None and new_direction != self.last_z_direction:
-                # Direction reversed: add backlash compensation
+                # 回程：补偿一个补偿值对应的脉冲，实际位置数据不做调整
                 if new_direction > 0:
                     newpos = list(newpos)
                     newpos[2] = z_target + self.backlash
+                    self.last_compensation = self.backlash
                 else:
                     newpos = list(newpos)
                     newpos[2] = z_target - self.backlash
+                    self.last_compensation = -self.backlash
 
             self.last_z_direction = new_direction
         else:
-            # No Z movement - don't update direction
-            pass
+            self.last_compensation = 0.  # 同向移动，无补偿
+        self.last_logical_z = z_target
 
         self.next_transform.move(newpos, speed)
 

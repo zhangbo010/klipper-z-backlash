@@ -87,6 +87,9 @@ cp klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
 ```ini
 [z_backlash]
 backlash: 0.1
+# 可选
+# split_pause: 0.08
+# takeup_speed: 0
 ```
 
 或使用 include 引入示例配置：
@@ -125,9 +128,9 @@ cp klipper-z-backlash/klippy/extras/z_backlash.py /home/pi/klipper/klippy/extras
 
 ## 工作原理说明
 
-- 补偿仅体现在脉冲上，Z 坐标不修改（否则切片会乱）
-- 检测到方向反转时补偿对应脉冲，逻辑位置保持不变
-- 支持分段移动，避免小步距（如 0.1mm）往复时错误补偿
+- 换向且行程足够时拆成两段真实 `move`（消隙 + 到位），多走的脉冲消除丝杆间隙；`get_position()` 不篡改坐标。
+- 可选 `split_pause` / `takeup_speed` 调节两段之间的停顿与第一段速度（见 README 参数表）。
+- 插件在 `load_config` 中对模块 `reload`，一般 **`FIRMWARE_RESTART`** 可加载新版脚本；若仍报配置项无效，请 **`sudo systemctl restart klipper`** 一次。
 
 ---
 

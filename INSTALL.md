@@ -9,7 +9,7 @@ Z 轴丝杆与螺母存在间隙，方向反转时会产生空程，本插件通
 ### 克隆仓库并复制文件
 
 ```bash
-git clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
 cd klipper-z-backlash
 cp klippy/extras/z_backlash.py ~/klipper/klippy/extras/
 ```
@@ -47,6 +47,28 @@ bash install.sh
 
 需已安装 `git`。
 
+### 克隆报错：RPC failed / curl 16 Error in the HTTP2 framing layer
+
+多为网络与 HTTP/2 兼容问题，任选其一：
+
+```bash
+# 方式 A：全局改用 HTTP/1.1（一次设置，长期有效）
+git config --global http.version HTTP/1.1
+
+# 方式 B：仅本次克隆（推荐）
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+```
+
+仍失败时，不克隆整库，用 curl 只下载文件：
+
+```bash
+mkdir -p ~/klipper/klippy/extras ~/printer_data/config
+curl -fsSL -o ~/klipper/klippy/extras/z_backlash.py \
+  https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
+curl -fsSL -o ~/printer_data/config/z_backlash.cfg \
+  https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/config/z_backlash.cfg
+```
+
 ---
 
 ## 完整安装步骤
@@ -54,7 +76,7 @@ bash install.sh
 ### 1. 安装模块
 
 ```bash
-git clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
 cp klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
 ```
 

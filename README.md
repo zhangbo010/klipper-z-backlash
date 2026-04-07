@@ -19,7 +19,7 @@
 ### 推荐：克隆后复制
 
 ```bash
-git clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
 cp klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
 # 可选：复制配置示例到 printer_data/config/
 cp klipper-z-backlash/config/z_backlash.cfg ~/printer_data/config/
@@ -33,7 +33,17 @@ cp klipper-z-backlash/config/z_backlash.cfg ~/printer_data/config/
 bash <(curl -sSL https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh)
 ```
 
-脚本内部使用 `git clone` 拉取仓库后复制文件。需已安装 `git`。
+脚本内部使用 `git clone`（强制 HTTP/1.1）拉取仓库后复制文件。需已安装 `git`。
+
+### 克隆失败（RPC failed / HTTP2 framing layer）
+
+网络不稳定时 Git 走 HTTP/2 可能报错，可全局改用 HTTP/1.1 后再克隆：
+
+```bash
+git config --global http.version HTTP/1.1
+```
+
+或每次克隆时加上 `-c http.version=HTTP/1.1`（见上文命令）。仍失败时可用 `curl` 直接下载单文件（见 INSTALL.md）。
 
 ### 手动安装
 

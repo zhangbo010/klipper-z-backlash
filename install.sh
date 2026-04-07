@@ -41,7 +41,8 @@ echo ""
 echo "[1/3] 从 Git 克隆仓库 ..."
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
-git clone --depth 1 --branch "$BRANCH" "$GIT_REPO" "$WORKDIR/repo"
+# 避免 HTTP/2 下偶发 RPC failed / curl 16 framing layer 错误
+git -c http.version=HTTP/1.1 clone --depth 1 --branch "$BRANCH" "$GIT_REPO" "$WORKDIR/repo"
 
 cp "$WORKDIR/repo/klippy/extras/z_backlash.py" "$TARGET_FILE"
 echo "      已安装到: $TARGET_FILE"

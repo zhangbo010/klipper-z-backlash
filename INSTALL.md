@@ -2,9 +2,37 @@
 
 Z 轴丝杆与螺母存在间隙，方向反转时会产生空程，本插件通过补偿消除回差影响。
 
-## 一键安装（推荐）
+## 安装方式（推荐：Git）
 
-在 Klipper 主机（如树莓派）的终端中执行：
+需已安装 **git**（如 `sudo apt install git`）。
+
+### 克隆仓库并复制文件
+
+```bash
+git clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+cd klipper-z-backlash
+cp klippy/extras/z_backlash.py ~/klipper/klippy/extras/
+```
+
+若 Klipper 不在 `~/klipper`，请改成实际路径（如 `/home/pi/klipper`）。
+
+可选：复制配置示例：
+
+```bash
+cp config/z_backlash.cfg ~/printer_data/config/
+```
+
+在 `printer.cfg` 中加入：
+
+```ini
+[include z_backlash.cfg]
+```
+
+或手动写入 `[z_backlash]` 段（见下文）。
+
+### 一键安装脚本
+
+脚本通过 **git clone** 拉取仓库后复制文件：
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh)
@@ -17,63 +45,17 @@ wget -q -O install.sh https://raw.githubusercontent.com/zhangbo010/klipper-z-bac
 bash install.sh
 ```
 
-脚本会自动：检测 Klipper 路径 → 下载模块 → 下载配置示例 → 重启 Klipper
-
----
-
-## 手动安装
-
-若需手动安装，执行：
-
-```bash
-cd ~/klipper/klippy/extras && wget -O z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
-```
-
-或使用 curl：
-
-```bash
-cd ~/klipper/klippy/extras && curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
-```
-
----
-
-## 从 Git 克隆安装
-
-```bash
-# 1. 克隆仓库到临时目录
-cd /tmp && git clone https://github.com/zhangbo010/klipper-z-backlash.git
-
-# 2. 复制模块到 Klipper
-cp /tmp/klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
-
-# 3. 清理
-rm -rf /tmp/klipper-z-backlash
-```
-
-### 从本地已克隆的仓库安装
-
-若已克隆本仓库到本地：
-
-```bash
-cp /path/to/klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
-```
+需已安装 `git`。
 
 ---
 
 ## 完整安装步骤
 
-### 1. 下载并安装模块
+### 1. 安装模块
 
 ```bash
-# 进入 Klipper extras 目录（默认路径，按实际修改）
-cd ~/klipper/klippy/extras
-
-# 下载 z_backlash.py（任选一种方式）
-# 方式 A：wget
-wget https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
-
-# 方式 B：curl
-curl -sSL -o z_backlash.py https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/klippy/extras/z_backlash.py
+git clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+cp klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
 ```
 
 ### 2. 添加配置
@@ -111,10 +93,10 @@ sudo systemctl restart klipper
 | Fluidd | `~/klipper` |
 | 自定义 | 根据实际安装路径 |
 
-示例（自定义路径）：
+示例：
 
 ```bash
-cp z_backlash.py /home/pi/klipper/klippy/extras/
+cp klipper-z-backlash/klippy/extras/z_backlash.py /home/pi/klipper/klippy/extras/
 ```
 
 ---

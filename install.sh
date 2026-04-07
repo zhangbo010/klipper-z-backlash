@@ -1,17 +1,21 @@
 #!/bin/bash
-# Klipper Z轴回差补偿插件 - 一键安装脚本
+# Klipper Z轴回差补偿插件 - 一键安装脚本（通过 git 克隆）
 # 在 Klipper 主机（树莓派等）上执行: bash install.sh
 
 set -e
 
-REPO_URL="https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main"
-EXTRAS_FILE="klippy/extras/z_backlash.py"
-CONFIG_FILE="config/z_backlash.cfg"
+GIT_REPO="https://github.com/zhangbo010/klipper-z-backlash.git"
+BRANCH="main"
 
 echo "=========================================="
-echo "  Klipper Z轴回差补偿 - 一键安装"
+echo "  Klipper Z轴回差补偿 - 一键安装 (git)"
 echo "=========================================="
 echo ""
+
+if ! command -v git &>/dev/null; then
+    echo "错误: 需要安装 git，例如: sudo apt install git"
+    exit 1
+fi
 
 # 检测 Klipper 路径
 KLIPPER_PATH=""
@@ -32,18 +36,14 @@ echo "检测到 Klipper 路径: $KLIPPER_PATH"
 EXTRAS_DIR="$KLIPPER_PATH/klippy/extras"
 TARGET_FILE="$EXTRAS_DIR/z_backlash.py"
 
-# 下载模块
+# 克隆仓库
 echo ""
-echo "[1/3] 下载 z_backlash.py ..."
-if command -v wget &>/dev/null; then
-    wget -q -O "$TARGET_FILE" "$REPO_URL/$EXTRAS_FILE"
-elif command -v curl &>/dev/null; then
-    curl -sSL -o "$TARGET_FILE" "$REPO_URL/$EXTRAS_FILE"
-else
-    echo "错误: 需要 wget 或 curl"
-    exit 1
-fi
+echo "[1/3] 从 Git 克隆仓库 ..."
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "$WORKDIR"' EXIT
+git clone --depth 1 --branch "$BRANCH" "$GIT_REPO" "$WORKDIR/repo"
 
+cp "$WORKDIR/repo/klippy/extras/z_backlash.py" "$TARGET_FILE"
 echo "      已安装到: $TARGET_FILE"
 
 # 查找 printer.cfg
@@ -63,12 +63,8 @@ if [ -n "$PRINTER_CFG" ]; then
     else
         CONFIG_DIR="$(dirname "$PRINTER_CFG")"
         CONFIG_DEST="$CONFIG_DIR/z_backlash.cfg"
-        if command -v wget &>/dev/null; then
-            wget -q -O "$CONFIG_DEST" "$REPO_URL/$CONFIG_FILE"
-        else
-            curl -sSL -o "$CONFIG_DEST" "$REPO_URL/$CONFIG_FILE"
-        fi
-        echo "      已下载配置到: $CONFIG_DEST"
+        cp "$WORKDIR/repo/config/z_backlash.cfg" "$CONFIG_DEST"
+        echo "      已复制配置到: $CONFIG_DEST"
         echo ""
         echo "      请在 printer.cfg 中添加以下行:"
         echo "      [include z_backlash.cfg]"

@@ -14,13 +14,26 @@
 
 ## 安装方法
 
-### 一键安装（推荐）
+需要已安装 **git**。
 
-在 Klipper 主机终端执行：
+### 推荐：克隆后复制
+
+```bash
+git clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
+cp klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
+# 可选：复制配置示例到 printer_data/config/
+cp klipper-z-backlash/config/z_backlash.cfg ~/printer_data/config/
+```
+
+将 `~/klipper` 换成你机器上的 Klipper 路径。然后在 `printer.cfg` 中加入 `[z_backlash]` 或 `[include z_backlash.cfg]`，重启 Klipper。
+
+### 一键脚本（git 克隆）
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh)
 ```
+
+脚本内部使用 `git clone` 拉取仓库后复制文件。需已安装 `git`。
 
 ### 手动安装
 

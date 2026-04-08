@@ -1,13 +1,15 @@
 # Z Axis Backlash Compensation
 #
-# 丝杆螺母间隙：仅在 Z 换向时先走 backlash 消隙，再沿新方向走完整 |ΔZ|（总路程 |ΔZ|+backlash）。
-# 第二段长度为完整 |ΔZ|，故 plan_end = z_phys + sign(ΔZ)*backlash + ΔZ；get_position 减去 (plan_end−target)，使 M114 与 G-code 一致。
+# 换向两段：① 步进长度=|ΔZ|（终点 z_phys+ΔZ；上一段若有补偿则 z_phys≠z_logical，第一段后 adj=z_after_main−target）；② 再脉冲 comp。
+# get_position 用 _z_report_adj=物理−目标，使逻辑 Z 与 G-code 一致。
+# homing:home_rails_begin→end 期间 _in_homing，不拆段、不补偿（归零用底层 move）。
 #
 # printer.cfg 示例：
 #   [z_backlash]
 #   backlash: 0.1
-#   # split_pause: 两段消隙之间 dwell(秒)；0=不停顿
-#   # takeup_speed: 第一段消隙速度(mm/s)；0=与本次 G 移动同速
+#   # split_pause: 两段之间 dwell(秒)；0=不停顿
+#   # takeup_speed: 第二段补偿速度(mm/s)；0=与本次 G 移动同速
+#   # compensation_scale: 补偿段长度系数，默认 1.0；实测仍偏多可改为 0.5～0.8
 #
 # Copyright (C) 2025
 #
@@ -21,15 +23,20 @@ class ZBacklashCompensation:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.backlash = config.getfloat('backlash', 0.1, minval=0.)
+        self.compensation_scale = config.getfloat(
+            'compensation_scale', 1., above=0., maxval=2.)
         self.split_pause = config.getfloat('split_pause', 0.08, minval=0.)
         self.takeup_speed = config.getfloat('takeup_speed', 0., minval=0.)
         self.last_z_direction = None  # 1=up, -1=down
         self.last_logical_z = None    # 上一段 G1 的目标 Z（与 gcode 一致）
-        # 两段消隙完成后底层 Z 与逻辑 Z 的差（plan_end − z_target），get_position 减去此项以对齐 M114
+        # 补偿段导致的底层 Z 与逻辑 Z 之差，get_position 减去此项
         self._z_report_adj = 0.
+        self._in_homing = False  # 归零过程中不拆段、不补偿（G28 等）
         self.next_transform = None
         self.printer.register_event_handler("klippy:connect",
                                             self._handle_connect)
+        self.printer.register_event_handler("homing:home_rails_begin",
+                                            self._handle_home_rails_begin)
         self.printer.register_event_handler("homing:home_rails_end",
                                             self._handle_home_rails_end)
         gcode = self.printer.lookup_object('gcode')
@@ -42,7 +49,11 @@ class ZBacklashCompensation:
         self.toolhead = self.printer.lookup_object('toolhead')
         self.next_transform = gcode_move.set_move_transform(self, force=True)
 
+    def _handle_home_rails_begin(self, homing_state, rails):
+        self._in_homing = True
+
     def _handle_home_rails_end(self, homing_state, rails):
+        self._in_homing = False
         self.last_z_direction = None
         self.last_logical_z = None
         self._z_report_adj = 0.
@@ -53,12 +64,22 @@ class ZBacklashCompensation:
             pos[2] -= self._z_report_adj
         return pos
 
+    def get_trapq_z_adjustment(self):
+        """trapq 物理 Z 相对逻辑 Z 的偏移；供 motion_report 与 get_position 一致"""
+        return self._z_report_adj
+
     def move(self, newpos, speed):
         newpos = list(newpos)
         z_target = newpos[2]
+        if self._in_homing:
+            self._z_report_adj = 0.
+            self.next_transform.move(newpos, speed)
+            self.last_logical_z = z_target
+            return
         z_logical = self.last_logical_z
         if z_logical is None:
             z_logical = self.get_position()[2]
+        # 底层物理 Z（commanded_pos），与逻辑可能差上一段的补偿；分段时应用 z_phys+z_delta，避免反向第一段走成 |ΔZ|+backlash
         z_phys = self.next_transform.get_position()[2]
         z_delta = z_target - z_logical
 
@@ -73,35 +94,37 @@ class ZBacklashCompensation:
                         and new_direction != prev_dir)
             self.last_z_direction = new_direction
 
-            # 两段消隙：换向且 |ΔZ| 严格大于 backlash（否则第一段消隙会越过目标）
-            can_split = reversal and abs(z_delta) > self.backlash + 1e-9
-            if can_split:
+            # 换向：先走到 target；仅当 |ΔZ|>backlash 时再追加补偿（长行程已消隙，短行程只走一段避免重复加回差）
+            if reversal and abs(z_delta) > self.backlash + 1e-9:
                 s = 1.0 if z_delta > 0 else -1.0
-                # 从物理 Z 起走 backlash 消隙，第二段再走完整 ΔZ（总脉冲 |ΔZ|+backlash）
-                z_takeup = z_phys + s * self.backlash
-                z_plan_end = z_takeup + z_delta
-                plan_adj = z_plan_end - z_target
+                comp = self.backlash * self.compensation_scale
+                # 第一段：步进长度 = |ΔZ|（z_phys→z_phys+z_delta）；若 z_phys≠z_logical，终点物理为 z_target+(z_phys−z_logical)，需 adj 使逻辑仍为 z_target
+                z_after_main = z_phys + z_delta
+                z_comp = z_after_main + s * comp
                 logging.info(
-                    "z_backlash: 两段消隙 log=%.4f phys=%.4f -> takeup=%.4f -> plan_end=%.4f (target=%.4f |dZ|=%.4f bl=%.4f adj=%.4f)",
-                    z_logical, z_phys, z_takeup, z_plan_end, z_target,
-                    abs(z_delta), self.backlash, plan_adj)
+                    "z_backlash: 两段 ① phys %.4f+ΔZ=%.4f -> %.4f ②补偿 -> phys=%.4f (|dZ|=%.4f comp=%.4f)",
+                    z_phys, z_delta, z_after_main, z_comp, abs(z_delta), comp)
                 p1 = list(newpos)
-                p1[2] = z_takeup
-                sp1 = speed
-                if self.takeup_speed > 0.:
-                    sp1 = min(speed, self.takeup_speed)
-                self.next_transform.move(p1, sp1)
-                # 消隙段结束后底层在 z_takeup，逻辑上仍应为 z_logical，便于 dwell 期间 M114 正确
-                self._z_report_adj = z_takeup - z_logical
+                p1[2] = z_after_main
+                self._z_report_adj = z_after_main - z_target
+                self.next_transform.move(p1, speed)
                 if self.split_pause > 0.:
                     self.toolhead.dwell(self.split_pause)
                 p2 = list(newpos)
-                p2[2] = z_plan_end
-                self.next_transform.move(p2, speed)
-                # _z_report_adj 与消隙段后相同 (= z_plan_end - z_target)，底层已到 z_plan_end
+                p2[2] = z_comp
+                sp2 = speed
+                if self.takeup_speed > 0.:
+                    sp2 = min(speed, self.takeup_speed)
+                self.next_transform.move(p2, sp2)
+                self._z_report_adj = z_comp - z_target
+            elif reversal:
+                logging.info(
+                    "z_backlash: 换向但 |dZ|=%.4f <= bl=%.4f，仅单段至 target（不追加补偿）",
+                    abs(z_delta), self.backlash)
+                self._z_report_adj = 0.
+                self.next_transform.move(newpos, speed)
             else:
                 self._z_report_adj = 0.
-                # 同向、首段、或行程不足以拆两段时：单次走到目标
                 self.next_transform.move(newpos, speed)
         else:
             self.next_transform.move(newpos, speed)
@@ -116,6 +139,7 @@ class ZBacklashCompensation:
     def get_status(self, eventtime):
         return {
             'backlash': self.backlash,
+            'compensation_scale': self.compensation_scale,
             'split_pause': self.split_pause,
             'takeup_speed': self.takeup_speed,
         }

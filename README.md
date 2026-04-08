@@ -1,17 +1,23 @@
-# Klipper Z轴回差补偿插件
+# Klipper Z 轴回差补偿插件
 
-为 Klipper 固件提供 Z 轴机械回差（背隙）补偿功能。Z 轴丝杆与螺母之间存在间隙，方向反转时会产生空程，导致实际位移与预期不一致，因此需要补偿。
+为 Klipper 提供 Z 轴丝杆螺母**机械间隙（回差）**补偿：换向时多走一段脉冲，**G-code / M114 的 Z 仍与指令一致**。
 
 ## 功能说明
 
-当 Z 轴**运动方向反转**（例如从上升变为下降），且本段行程 **大于** 设定的 `backlash` 时，插件将运动拆成**两段真实的直线移动**：先沿新方向走出约 `backlash` 的消隙行程，再走到目标 Z。补偿体现在**多发出的步进脉冲**上；**不**通过修改 `get_position()` 去「藏坐标」，因此 **M114 / 逻辑位置与 G-code 目标一致**。
+当 Z 轴**运动方向反转**（上→下或下→上），且本段 **`|ΔZ| > backlash`** 时，将本次移动拆成**两段真实直线**：
 
-### 工作原理
+1. **第一段**：步进长度等于 **`|ΔZ|`**（从当前物理 Z 走 `z_phys + ΔZ` 到 G-code 目标；若上一段曾补偿，物理与逻辑可能暂时不同，本段不会把「上一段多走的量」算进本段步距）。
+2. **第二段**：沿**同一方向**再脉冲 **`backlash × compensation_scale`**，用于消隙；逻辑 Z 通过内部修正仍显示为 G-code 目标。
 
-- **两段消隙**：换向且 `|ΔZ| > backlash` 时，先 `move` 到中间点（消隙），可选停顿后再 `move` 到目标；同向连续移动或行程不足以拆两段时不做拆分。
-- **坐标不篡改**：`get_position()` 仅透传下层变换，便于与切片、显示一致。
-- **分段移动兼容**：用逻辑目标 Z 与方向状态判断换向，减轻分段规划下的误判。
-- **配置热更新**：`load_config` 内对模块做 `importlib.reload`，在多数情况下 **`FIRMWARE_RESTART`** 即可加载新版 `z_backlash.py`；若曾长期运行旧版进程且出现异常，建议执行一次 **`sudo systemctl restart klipper`** 完整重启主机进程。
+`|ΔZ| ≤ backlash` 的换向**不**拆第二段（短行程主段已在间隙内，避免过量）。
+
+**归零（G28 单轴/多轴）**：在 `homing:home_rails_begin`～`home_rails_end` 整段过程中**不**做回差拆段与补偿，避免干扰归零。
+
+## 工作原理（摘要）
+
+- **换向判断**：用上一段 G1 的目标 Z 与当前指令比较方向。
+- **`get_position()`**：减去「物理 Z 与 G-code 目标的差」，使通过变换链读取的 Z 与切片/宏一致。
+- **界面 live Z**：若 Fluidd/Mainsail 等大数字与方括号目标不一致，可在完整 Klipper 树中对 `motion_report.py` 打补丁（见下文「可选：界面」）。
 
 ## 安装方法
 
@@ -22,35 +28,24 @@
 ```bash
 git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/zhangbo010/klipper-z-backlash.git
 cp klipper-z-backlash/klippy/extras/z_backlash.py ~/klipper/klippy/extras/
-# 可选：复制配置示例到 printer_data/config/
 cp klipper-z-backlash/config/z_backlash.cfg ~/printer_data/config/
 ```
 
-将 `~/klipper` 换成你机器上的 Klipper 路径。然后在 `printer.cfg` 中加入 `[z_backlash]` 或 `[include z_backlash.cfg]`，**重启 Klipper 服务**（见下文）。
+将 `~/klipper` 换成你机器上的 Klipper 路径。在 `printer.cfg` 中加入 `[z_backlash]` 或 `[include z_backlash.cfg]`，执行 **`FIRMWARE_RESTART`** 或 `sudo systemctl restart klipper`。
 
-### 一键脚本（git 克隆）
+### 一键脚本
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/zhangbo010/klipper-z-backlash/main/install.sh)
 ```
 
-脚本内部使用 `git clone`（强制 HTTP/1.1）拉取仓库后复制文件。需已安装 `git`。
-
-### 克隆失败（RPC failed / HTTP2 framing layer）
-
-网络不稳定时 Git 走 HTTP/2 可能报错，可全局改用 HTTP/1.1 后再克隆：
+### 克隆失败（HTTP2 / RPC）
 
 ```bash
 git config --global http.version HTTP/1.1
 ```
 
-或每次克隆时加上 `-c http.version=HTTP/1.1`（见上文命令）。仍失败时可用 `curl` 直接下载单文件（见 [INSTALL.md](INSTALL.md)）。
-
-### 手动安装
-
-1. 将 `klippy/extras/z_backlash.py` 复制到 Klipper 的 `klippy/extras/` 目录
-2. 在 `printer.cfg` 中添加配置段（见下方配置说明）
-3. 重启 Klipper 服务：`sudo systemctl restart klipper`
+详见 [INSTALL.md](INSTALL.md)。
 
 ## 配置说明
 
@@ -60,6 +55,7 @@ git config --global http.version HTTP/1.1
 [z_backlash]
 backlash: 0.1
 # 以下为可选
+# compensation_scale: 1.0
 # split_pause: 0.08
 # takeup_speed: 0
 ```
@@ -68,22 +64,26 @@ backlash: 0.1
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `backlash` | float | 0.1 | 回差补偿量（mm），需根据打印机实际测量 |
-| `split_pause` | float | 0.08 | 两段消隙之间 dwell（秒），0 表示不停顿；可减轻 lookahead 将两段合成一条轨迹的观感 |
-| `takeup_speed` | float | 0 | 第一段消隙速度（mm/s）；0 表示与本次移动速度相同；设小一点便于观察消隙段 |
+| `backlash` | float | 0.1 | 补偿段长度基准（mm），按实机测量 |
+| `compensation_scale` | float | 1.0 | 实际补偿 = `backlash × compensation_scale`（0～2）；仍偏多可调 0.5～0.8 |
+| `split_pause` | float | 0.08 | 两段之间 dwell（秒）；`0` 为不停顿 |
+| `takeup_speed` | float | 0 | 第二段补偿速度（mm/s）；`0` 表示与本次移动同速 |
 
-Klipper 要求 **`[z_backlash]` 中出现的每个选项都必须被本插件读取**。请保持 **`z_backlash.py` 与上述配置同步**；若报 `Option 'xxx' is not valid`，多为插件文件未更新或需完整重启 Klipper 进程。
+Klipper 要求 **`[z_backlash]` 中出现的每个选项都必须被本插件读取**。若报 `Option 'xxx' is not valid`，请更新 `z_backlash.py` 或完整重启 Klipper 进程。
 
 ## G 代码命令
 
 - **Z_BACKLASH_COMPENSATE VALUE=\<值\>**  
-  运行时设置回差补偿量，例如：`Z_BACKLASH_COMPENSATE VALUE=0.08`
+  运行时修改 `backlash`，例如：`Z_BACKLASH_COMPENSATE VALUE=0.08`
+
+## 可选：界面 live 与目标 Z 对齐
+
+`motion_report` 的 `live_position` 来自 trapq（物理插补），未经过本插件时，大屏 Z 可能比 G-code 目标多约 `backlash`。若需一致，可在**完整 Klipper 源码**中修改 `klippy/extras/motion_report.py`（在仓库 Issues/说明中可附补丁思路）。**本仓库仅包含 `z_backlash.py`**，不修改 Klipper 核心文件。
 
 ## 兼容性
 
-- 与 `skew_correction`、`bed_mesh` 等模块兼容
-- 归位（G28）后会自动重置方向状态
-- 支持小步距往复移动（需满足换向且行程大于 `backlash` 才会拆两段）
+- 与 `skew_correction`、`bed_mesh` 等常见模块配合使用；归位后方向/逻辑状态会重置。
+- **`load_config` 内对模块 `reload`**，多数情况下 **`FIRMWARE_RESTART`** 即可加载新版 `z_backlash.py`；若异常可 **`sudo systemctl restart klipper`**。
 
 ## 许可证
 

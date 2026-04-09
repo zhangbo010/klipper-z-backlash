@@ -15,8 +15,11 @@
 
 ## 工作原理（摘要）
 
-- **换向判断**：用上一段 G1 的目标 Z 与当前指令比较方向。
-- **`get_position()`**：减去「物理 Z 与 G-code 目标的差」，使通过变换链读取的 Z 与切片/宏一致。
+- **本段 ΔZ**：在 `move()` 入口用 **`get_position()[2]`**（与 M114 一致的逻辑 Z）作为起点，与 `last_position` 解耦；**不**缓存「上一段目标 Z」，避免 `SAVE_GCODE_STATE` / `RESTORE_GCODE_STATE` 与宏连续 `G1` 时错位。
+- **换向判断**：用上一段 Z 运动方向（`last_z_direction`）与当前方向比较。
+- **`get_position()`**：`commanded[Z] − _z_report_adj`，使变换链上的 Z 与 G-code 目标一致；`_z_report_adj` 在每次移动后更新为「物理终点 − 逻辑目标」。
+- **单段移动（同向，或换向但 |ΔZ|≤backlash）**：传给 `toolhead` 的 Z 终点为 **`z_phys + ΔZ`**（当前物理 Z 加**逻辑位移**），**不能**直接用 gcode 的 `z_target`。补偿后若逻辑与物理不一致（例如 `backlash=1` 时逻辑在 0、物理在 −1），若误把 `z_target` 当物理终点，同向连续第二段会少走路程约 **|回差|**。
+- **本段 Z 无变化**：仅动 XY 等时，Z 传 **`z_phys`**，避免在 `_z_report_adj≠0` 时把逻辑坐标当物理终点误拉 Z。
 - **界面 live Z**：若 Fluidd/Mainsail 等大数字与方括号目标不一致，可在完整 Klipper 树中对 `motion_report.py` 打补丁（见下文「可选：界面」）。
 
 ## 安装方法

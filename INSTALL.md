@@ -105,7 +105,9 @@ cp klipper-z-backlash/klippy/extras/z_backlash.py /home/pi/klipper/klippy/extras
 
 ## 工作原理说明（简要）
 
-- **换向**且 **`|ΔZ| > backlash`**：两段——先按指令位移走到目标（步进长度 `|ΔZ|`），再沿同向多走补偿量；**`|ΔZ| ≤ backlash`** 时只走一段。
+- **换向**且 **`|ΔZ| > backlash`**：两段——第一段物理终点为 `z_phys + ΔZ`（步进长度 `|ΔZ|`），第二段再沿同向补偿；**`|ΔZ| ≤ backlash`** 时只走一段，同样用 **`z_phys + ΔZ`** 作为单段终点。
+- **同向**连续移动：单段终点也是 **`z_phys + ΔZ`**（逻辑位移与物理步进一致）；若误用 `z_target` 当底层终点，在补偿后「逻辑≠物理」时会出现**少走路程**（约 `|回差|`）。
+- **ΔZ 来源**：`move()` 里用 **`get_position()`** 作起点，避免与 `SAVE/RESTORE` 宏冲突。
 - **归零**：`home_rails_begin`～`end` 期间不拆段、不补偿。
 - **`get_position()`** 对逻辑 Z 做修正，与 G-code 一致；**M114** 仍来自 G-code 状态，本身不含补偿段。
 - 插件在 `load_config` 中对模块 `reload`，一般 **`FIRMWARE_RESTART`** 可加载新版；若仍报配置项无效，请 **`sudo systemctl restart klipper`**。

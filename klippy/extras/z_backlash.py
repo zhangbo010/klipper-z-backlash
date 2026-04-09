@@ -1,7 +1,8 @@
 # Z Axis Backlash Compensation
 #
 # 换向两段：① 步进长度=|ΔZ|（终点 z_phys+ΔZ；上一段若有补偿则 z_phys≠z_logical，第一段后 adj=z_after_main−target）；② 再脉冲 comp。
-# get_position 用 _z_report_adj=物理−目标，使逻辑 Z 与 G-code 一致。
+# get_position 用 _z_report_adj=commanded[Z]−G-code 目标 Z。ΔZ 用 get_position() 起点（与 M114 一致），
+# 不用插件内缓存 last_z，避免 SAVE_GCODE_STATE/RESTORE 与宏重复 G1 时错位。
 # homing:home_rails_begin→end 期间 _in_homing，不拆段、不补偿（归零用底层 move）。
 #
 # printer.cfg 示例：
@@ -28,7 +29,6 @@ class ZBacklashCompensation:
         self.split_pause = config.getfloat('split_pause', 0.08, minval=0.)
         self.takeup_speed = config.getfloat('takeup_speed', 0., minval=0.)
         self.last_z_direction = None  # 1=up, -1=down
-        self.last_logical_z = None    # 上一段 G1 的目标 Z（与 gcode 一致）
         # 补偿段导致的底层 Z 与逻辑 Z 之差，get_position 减去此项
         self._z_report_adj = 0.
         self._in_homing = False  # 归零过程中不拆段、不补偿（G28 等）
@@ -55,7 +55,6 @@ class ZBacklashCompensation:
     def _handle_home_rails_end(self, homing_state, rails):
         self._in_homing = False
         self.last_z_direction = None
-        self.last_logical_z = None
         self._z_report_adj = 0.
 
     def get_position(self):
@@ -74,14 +73,16 @@ class ZBacklashCompensation:
         if self._in_homing:
             self._z_report_adj = 0.
             self.next_transform.move(newpos, speed)
-            self.last_logical_z = z_target
             return
-        z_logical = self.last_logical_z
-        if z_logical is None:
-            z_logical = self.get_position()[2]
-        # 底层物理 Z（commanded_pos），与逻辑可能差上一段的补偿；分段时应用 z_phys+z_delta，避免反向第一段走成 |ΔZ|+backlash
+        # gcode_move 在调用本 move 前已把 last_position 更新为「本段终点」，不能用其算 ΔZ。
+        # 逻辑起点 = 本段终点 − 位移；位移 = 逻辑当前 get_position（与 M114 一致）到终点的差。
+        z_logical_start = self.get_position()[2]
+        z_delta = z_target - z_logical_start
+        # 底层物理 Z（commanded_pos）
         z_phys = self.next_transform.get_position()[2]
-        z_delta = z_target - z_logical
+        phys_minus_logical = z_phys - z_logical_start
+        # 单段移动时底层必须走到 z_phys+z_delta；若把 gcode 的 z_target 直接传给 toolhead，
+        # 在「逻辑≠物理」（_z_report_adj≠0）时会把终点当成逻辑坐标，同向第二段会少走约 |adj|。
 
         if abs(z_delta) > 1e-9:
             if z_delta > 0:
@@ -116,20 +117,31 @@ class ZBacklashCompensation:
                 if self.takeup_speed > 0.:
                     sp2 = min(speed, self.takeup_speed)
                 self.next_transform.move(p2, sp2)
-                self._z_report_adj = z_comp - z_target
+                self._z_report_adj = (
+                    self.next_transform.get_position()[2] - z_target)
             elif reversal:
                 logging.info(
                     "z_backlash: 换向但 |dZ|=%.4f <= bl=%.4f，仅单段至 target（不追加补偿）",
                     abs(z_delta), self.backlash)
-                self._z_report_adj = 0.
-                self.next_transform.move(newpos, speed)
+                self._z_report_adj = phys_minus_logical
+                p = list(newpos)
+                p[2] = z_phys + z_delta
+                self.next_transform.move(p, speed)
+                self._z_report_adj = (
+                    self.next_transform.get_position()[2] - z_target)
             else:
-                self._z_report_adj = 0.
-                self.next_transform.move(newpos, speed)
+                # 同向：终点物理 = 当前物理 + 逻辑位移（与两段里第一段 z_phys+z_delta 一致）
+                self._z_report_adj = phys_minus_logical
+                p = list(newpos)
+                p[2] = z_phys + z_delta
+                self.next_transform.move(p, speed)
+                self._z_report_adj = (
+                    self.next_transform.get_position()[2] - z_target)
         else:
-            self.next_transform.move(newpos, speed)
-
-        self.last_logical_z = z_target
+            # 无 Z 变化：保持 Z 物理位置，勿把逻辑坐标当终点（否则在 adj≠0 时会误拉 Z）
+            p = list(newpos)
+            p[2] = z_phys
+            self.next_transform.move(p, speed)
 
     cmd_Z_BACKLASH_COMPENSATE_help = "Set Z backlash compensation value"
     def cmd_Z_BACKLASH_COMPENSATE(self, gcmd):
